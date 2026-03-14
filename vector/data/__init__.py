@@ -19,6 +19,8 @@ from vector.data.config import (
     DEFAULT_CONFIG_PATH,
 )
 
+import vector.data.loaders  # noqa: F401 -- trigger loader registration
+
 __all__ = [
     "DATASET_REGISTRY",
     "BaseLoader",
