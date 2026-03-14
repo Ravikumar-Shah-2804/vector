@@ -1,0 +1,65 @@
+datasets:
+  NAB:
+    raw_path: data/raw/NAB
+    processed_path: data/processed/NAB
+    window_size: 30
+    n_dims: 1
+    n_sequences: 6  # 7 minus nyc_taxi
+    format: csv
+
+  UCR:
+    raw_path: data/raw/UCR
+    processed_path: data/processed/UCR
+    window_size: 30
+    n_dims: 1
+    n_sequences: 4  # A4, C2, T1 + 1 additional
+    format: txt
+    selected_sequences: [135, 136, 137, 138]
+
+  MBA:
+    raw_path: data/raw/MBA
+    processed_path: data/processed/MBA
+    window_size: 30
+    n_dims: 2
+    n_sequences: 1
+    format: xlsx
+
+  SMAP:
+    raw_path: data/raw/SMAP_MSL
+    processed_path: data/processed/SMAP
+    window_size: 30
+    n_dims: 25
+    n_sequences: 55
+    format: npy
+
+  MSL:
+    raw_path: data/raw/SMAP_MSL
+    processed_path: data/processed/MSL
+    window_size: 30
+    n_dims: 55
+    n_sequences: 27
+    format: npy
+
+  SWaT:
+    raw_path: data/raw/SWaT
+    processed_path: data/processed/SWaT
+    window_size: 30
+    n_dims: 51
+    n_sequences: 1
+    format: csv
+
+  WADI:
+    raw_path: data/raw/WADI
+    processed_path: data/processed/WADI
+    window_size: 30
+    n_dims: 123
+    n_sequences: 1
+    format: csv
+
+  SMD:
+    raw_path: data/raw/SMD
+    processed_path: data/processed/SMD
+    window_size: 12
+    n_dims: 38
+    n_sequences: 28
+    format: txt
