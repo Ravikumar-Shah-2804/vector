@@ -6,6 +6,9 @@ datasets:
     n_dims: 1
     n_sequences: 6  # 7 minus nyc_taxi
     format: csv
+    spot:
+      level: 0.991
+      scaling_factor: 1.0
 
   UCR:
     raw_path: data/raw/UCR
@@ -15,6 +18,9 @@ datasets:
     n_sequences: 4  # A4, C2, T1 + 1 additional
     format: txt
     selected_sequences: [135, 136, 137, 138]
+    spot:
+      level: 0.993
+      scaling_factor: 1.0
 
   MBA:
     raw_path: data/raw/MBA
@@ -23,6 +29,9 @@ datasets:
     n_dims: 2
     n_sequences: 1
     format: xlsx
+    spot:
+      level: 0.87
+      scaling_factor: 1.0
 
   SMAP:
     raw_path: data/raw/SMAP_MSL
@@ -31,6 +40,9 @@ datasets:
     n_dims: 25
     n_sequences: 55
     format: npy
+    spot:
+      level: 0.99
+      scaling_factor: 1.0
 
   MSL:
     raw_path: data/raw/SMAP_MSL
@@ -39,6 +51,9 @@ datasets:
     n_dims: 55
     n_sequences: 27
     format: npy
+    spot:
+      level: 0.97
+      scaling_factor: 1.0
 
   SWaT:
     raw_path: data/raw/SWaT
@@ -47,6 +62,9 @@ datasets:
     n_dims: 51
     n_sequences: 1
     format: csv
+    spot:
+      level: 0.993
+      scaling_factor: 1.0
 
   WADI:
     raw_path: data/raw/WADI
@@ -55,6 +73,9 @@ datasets:
     n_dims: 123
     n_sequences: 1
     format: csv
+    spot:
+      level: 0.99
+      scaling_factor: 1.0
 
   SMD:
     raw_path: data/raw/SMD
@@ -63,3 +84,6 @@ datasets:
     n_dims: 38
     n_sequences: 28
     format: txt
+    spot:
+      level: 0.99995
+      scaling_factor: 1.04
