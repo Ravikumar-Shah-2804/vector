@@ -504,3 +504,96 @@ def plot_pareto_evolution(
     name = f"pareto_evolution_{dataset_name}"
     save_figure(fig, output_dir, name)
     return name
+
+
+_ABLATION_PARAMS = ["n_res", "rho", "sigma", "sparsity", "alpha", "k", "n_wash"]
+
+
+def plot_ablation(
+    dataset_name: str,
+    search_config: dict,
+    output_dir: str | Path,
+) -> str | None:
+    """Plot ablation study: F1 sensitivity to each of the 7 ESN hyperparameters.
+
+    Mines existing Optuna trial history rather than running new experiments.
+    For each parameter, bins trials across the search range and plots mean F1
+    with shaded standard deviation. Produces a 2x4 subplot grid (7 params +
+    1 hidden). Saves dual PNG+PDF via save_figure.
+
+    Returns the output path stem or None if the study cannot be loaded.
+    """
+    try:
+        import optuna
+
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+        from vector.search.engine import create_or_load_study
+
+        study = create_or_load_study(dataset_name, search_config)
+    except Exception as exc:
+        print(f"Warning: cannot load study for {dataset_name}: {exc}")
+        return None
+
+    completed = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
+    if not completed:
+        print(f"Warning: no completed trials for {dataset_name}")
+        return None
+
+    fig, axes = plt.subplots(2, 4, figsize=(20, 10))
+    axes_flat = axes.flatten()
+
+    for idx, param_name in enumerate(_ABLATION_PARAMS):
+        ax = axes_flat[idx]
+
+        # Extract (param_value, f1) pairs from completed trials
+        param_vals = []
+        f1_vals = []
+        for trial in completed:
+            if param_name in trial.params:
+                param_vals.append(float(trial.params[param_name]))
+                f1_vals.append(1.0 - trial.values[0])
+
+        if len(param_vals) < 2:
+            ax.set_title(param_name)
+            ax.text(0.5, 0.5, "Insufficient data", ha="center", va="center",
+                    transform=ax.transAxes)
+            continue
+
+        param_arr = np.array(param_vals)
+        f1_arr = np.array(f1_vals)
+
+        # Bin trials and compute mean/std F1 per bin
+        bin_edges = np.histogram_bin_edges(param_arr, bins=15)
+        bin_centers = []
+        bin_means = []
+        bin_stds = []
+
+        for b in range(len(bin_edges) - 1):
+            mask = (param_arr >= bin_edges[b]) & (param_arr < bin_edges[b + 1])
+            # Include right edge in last bin
+            if b == len(bin_edges) - 2:
+                mask = (param_arr >= bin_edges[b]) & (param_arr <= bin_edges[b + 1])
+            if mask.sum() > 0:
+                bin_centers.append((bin_edges[b] + bin_edges[b + 1]) / 2)
+                bin_means.append(f1_arr[mask].mean())
+                bin_stds.append(f1_arr[mask].std())
+
+        centers = np.array(bin_centers)
+        means = np.array(bin_means)
+        stds = np.array(bin_stds)
+
+        ax.plot(centers, means, color="blue", linewidth=1.5)
+        ax.fill_between(centers, means - stds, means + stds, alpha=0.2, color="blue")
+        ax.set_xlabel(param_name)
+        ax.set_ylabel("F1 Score")
+        ax.set_title(param_name)
+
+    # Hide the 8th (empty) subplot
+    axes_flat[7].set_visible(False)
+
+    fig.suptitle(f"Ablation Study - {dataset_name}", fontsize=14)
+    fig.tight_layout()
+
+    name = f"ablation_{dataset_name}"
+    save_figure(fig, output_dir, name)
+    return name
