@@ -61,9 +61,7 @@ def generate_latex_table3(
 
     Returns the LaTeX string.
     """
-    datasets = [ds for ds in ALL_DATASETS if ds in results]
-    if not datasets:
-        datasets = ALL_DATASETS
+    datasets = ALL_DATASETS
 
     # Build header
     col_spec = "l" + "c" * len(datasets)
@@ -142,9 +140,7 @@ def generate_latex_table4(
 
     Returns the LaTeX string.
     """
-    datasets = [ds for ds in ALL_DATASETS if ds in results]
-    if not datasets:
-        datasets = ALL_DATASETS
+    datasets = ALL_DATASETS
 
     col_spec = "l" + "c" * len(datasets)
     header_cells = ["Method"]
