@@ -162,3 +162,124 @@ def test_to_serializable_numpy_types():
     json_str = json.dumps(data)
     assert "42" in json_str
     assert "3.14" in json_str
+
+
+# ---------------------------------------------------------------------------
+# Task 2: Baseline runner and plot generation tests
+# ---------------------------------------------------------------------------
+
+
+def _mock_objective(_trial, *_args, **_kwargs):
+    """Deterministic mock for vector.search.objective.objective."""
+    return (0.15, 500.0)
+
+
+def test_default_baseline_returns_correct_keys(monkeypatch):
+    """Default baseline returns dict with method, f1, effective_size, params."""
+    monkeypatch.setattr(
+        "vector.baselines.objective",
+        _mock_objective,
+    )
+
+    result = run_default_baseline(
+        sequences=[],
+        dataset_name="test",
+        search_config={},
+        dataset_config={},
+    )
+
+    assert result["method"] == "default"
+    assert abs(result["f1"] - 0.85) < 1e-12  # 1 - 0.15
+    assert abs(result["effective_size"] - 500.0) < 1e-12
+    assert "params" in result
+    assert isinstance(result["params"], dict)
+
+
+def test_grid_search_evaluates_12_configs(monkeypatch):
+    """Grid search evaluates exactly 12 configurations (4 rho x 3 n_res)."""
+    monkeypatch.setattr(
+        "vector.baselines.objective",
+        _mock_objective,
+    )
+
+    result = run_grid_search_baseline(
+        sequences=[],
+        dataset_name="test",
+        search_config={},
+        dataset_config={},
+    )
+
+    assert result["n_configs"] == 12
+    assert len(result["all_configs"]) == 12
+    assert "best_f1" in result
+    assert "best_params" in result
+    assert result["method"] == "grid_search"
+    # All configs should have same f1 since mock returns constant
+    assert abs(result["best_f1"] - 0.85) < 1e-12
+
+
+def test_save_baseline_results_creates_json(tmp_path):
+    """save_baseline_results writes valid JSON to expected path."""
+    results = {
+        "default": {"method": "default", "f1": 0.85, "effective_size": 500.0},
+        "grid_search": {"method": "grid_search", "best_f1": 0.9},
+    }
+
+    out_path = save_baseline_results(results, "test_ds", str(tmp_path))
+
+    expected_path = tmp_path / "test_ds" / "baseline.json"
+    assert expected_path.exists()
+    assert out_path == expected_path
+
+    with open(expected_path) as f:
+        loaded = json.load(f)
+
+    assert loaded["dataset"] == "test_ds"
+    assert loaded["default"]["f1"] == 0.85
+    assert loaded["grid_search"]["best_f1"] == 0.9
+
+
+def test_plot_pareto_creates_png(tmp_path):
+    """plot_pareto creates a PNG file on disk for non-empty results."""
+    pareto_results = [
+        {
+            "trial_number": 0,
+            "params": {"n_res": 100, "k": 5},
+            "f1": 0.9,
+            "effective_size": 20.0,
+            "racs": 0.25,
+            "rank": 1,
+        },
+        {
+            "trial_number": 1,
+            "params": {"n_res": 500, "k": 1},
+            "f1": 0.85,
+            "effective_size": 500.0,
+            "racs": 0.12,
+            "rank": 2,
+        },
+        {
+            "trial_number": 2,
+            "params": {"n_res": 50, "k": 1},
+            "f1": 0.5,
+            "effective_size": 50.0,
+            "racs": 0.10,
+            "rank": 3,
+        },
+    ]
+
+    result_path = plot_pareto(pareto_results, "test_dataset", str(tmp_path))
+
+    expected_path = tmp_path / "pareto_test_dataset.png"
+    assert expected_path.exists()
+    assert result_path == str(expected_path)
+    assert expected_path.stat().st_size > 0
+
+
+def test_plot_pareto_empty_results(tmp_path):
+    """plot_pareto returns None and creates no file for empty results."""
+    result = plot_pareto([], "test_dataset", str(tmp_path))
+
+    assert result is None
+    png_path = tmp_path / "pareto_test_dataset.png"
+    assert not png_path.exists()
