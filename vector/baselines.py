@@ -7,6 +7,7 @@ rho x n_res, and random search via Optuna RandomSampler.
 
 from __future__ import annotations
 
+import functools
 import itertools
 import json
 import logging
@@ -180,3 +181,119 @@ def save_baseline_results(
 
     logger.info("Baseline results saved to %s", out_path)
     return out_path
+
+
+def run_random_search_baseline(
+    dataset_name: str,
+    sequences: list[dict],
+    search_config: dict,
+    dataset_config: dict,
+    n_trials: int = 1500,
+    n_jobs: int = 4,
+) -> dict:
+    """Run random search baseline with Optuna RandomSampler (BASE-02).
+
+    Uses in-memory storage (no SQLite) to avoid collision with the main
+    VECTOR study database.
+
+    Parameters
+    ----------
+    dataset_name : str
+        Dataset name for study naming.
+    sequences : list[dict]
+        Sequence dicts with train/val/test/labels arrays.
+    search_config : dict
+        Parsed search.yaml configuration.
+    dataset_config : dict
+        Parsed datasets.yaml configuration.
+    n_trials : int
+        Number of random trials to run.
+    n_jobs : int
+        Parallel workers.
+
+    Returns
+    -------
+    dict
+        method, best_f1, n_trials, best_params.
+    """
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+    sampler = optuna.samplers.RandomSampler(seed=42)
+    study = optuna.create_study(
+        study_name=f"baseline_random_{dataset_name}",
+        directions=["minimize", "minimize"],
+        sampler=sampler,
+    )
+
+    objective_fn = functools.partial(
+        objective,
+        sequences=sequences,
+        dataset_name=dataset_name,
+        search_config=search_config,
+        dataset_config=dataset_config,
+    )
+
+    study.optimize(objective_fn, n_trials=n_trials, n_jobs=n_jobs)
+
+    completed = [
+        t for t in study.trials
+        if t.state == optuna.trial.TrialState.COMPLETE
+    ]
+
+    if not completed:
+        return {
+            "method": "random_search",
+            "best_f1": 0.0,
+            "n_trials": len(study.trials),
+            "best_params": {},
+        }
+
+    best_trial = min(completed, key=lambda t: t.values[0])
+    best_f1 = 1.0 - best_trial.values[0]
+
+    return {
+        "method": "random_search",
+        "best_f1": float(best_f1),
+        "n_trials": len(study.trials),
+        "best_params": dict(best_trial.params),
+    }
+
+
+def run_all_baselines(
+    sequences: list[dict],
+    dataset_name: str,
+    search_config: dict,
+    dataset_config: dict,
+    output_dir: str = "experiments/results",
+) -> dict:
+    """Run all three baselines and save combined results.
+
+    Convenience function that orchestrates default, grid search, and
+    random search baselines, then serializes everything to JSON.
+
+    Returns
+    -------
+    dict
+        Combined results with keys: default, grid_search, random_search.
+    """
+    logger.info("Running baselines for %s", dataset_name)
+
+    default_result = run_default_baseline(
+        sequences, dataset_name, search_config, dataset_config,
+    )
+    grid_result = run_grid_search_baseline(
+        sequences, dataset_name, search_config, dataset_config,
+    )
+    random_result = run_random_search_baseline(
+        dataset_name, sequences, search_config, dataset_config,
+    )
+
+    results = {
+        "default": default_result,
+        "grid_search": grid_result,
+        "random_search": random_result,
+    }
+
+    save_baseline_results(results, dataset_name, output_dir)
+
+    return results
