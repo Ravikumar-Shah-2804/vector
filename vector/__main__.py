@@ -22,7 +22,7 @@ DATASET_MAP: dict[str, str] = {
     "smd": "SMD",
 }
 
-MODE_ORDER = ["preprocess", "search", "baseline", "eval", "plot"]
+MODE_ORDER = ["preprocess", "search", "baseline", "eval", "plot", "paper"]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -185,12 +185,22 @@ def _run_plot(
         print(f"[{ds}] Pareto plot saved")
 
 
+def _run_paper(
+    datasets: list[str], dataset_config: dict, search_config: dict
+) -> None:
+    """Generate all paper artifacts (tables, stats, plots)."""
+    from vector.paper import generate_all_artifacts
+
+    generate_all_artifacts(datasets, dataset_config, search_config)
+
+
 MODE_DISPATCH = {
     "preprocess": _run_preprocess,
     "search": _run_search,
     "baseline": _run_baseline,
     "eval": _run_eval,
     "plot": _run_plot,
+    "paper": _run_paper,
 }
 
 

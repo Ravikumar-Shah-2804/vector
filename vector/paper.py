@@ -506,6 +506,168 @@ def plot_pareto_evolution(
     return name
 
 
+def plot_f1_breakdown(
+    results: dict[str, dict[str, dict]],
+    dummy_datasets: set[str],
+    output_dir: str | Path,
+) -> None:
+    """Grouped bar chart: datasets on x-axis, one bar per method, F1 on y-axis.
+
+    Marks dummy datasets with "(D)" suffix. Handles N/A values by plotting
+    zero-height bars with hatching. Legend outside plot area.
+    """
+    datasets = ALL_DATASETS
+    methods = ALL_METHODS
+    n_datasets = len(datasets)
+    n_methods = len(methods)
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+    bar_width = 0.8 / n_methods
+    colors = [plt.cm.tab10(i) for i in range(n_methods)]
+
+    for m_idx, method in enumerate(methods):
+        x_positions = np.arange(n_datasets) + m_idx * bar_width
+        heights = []
+        hatch_flags = []
+
+        for ds in datasets:
+            entry = results.get(ds, {}).get(method, {})
+            f1 = entry.get("f1", "N/A")
+            if f1 == "N/A" or f1 is None:
+                heights.append(0.0)
+                hatch_flags.append(True)
+            else:
+                try:
+                    heights.append(float(f1))
+                    hatch_flags.append(False)
+                except (TypeError, ValueError):
+                    heights.append(0.0)
+                    hatch_flags.append(True)
+
+        bars = ax.bar(
+            x_positions, heights, bar_width,
+            label=method, color=colors[m_idx], edgecolor="black", linewidth=0.5,
+        )
+        for bar, is_na in zip(bars, hatch_flags):
+            if is_na:
+                bar.set_hatch("//")
+                bar.set_alpha(0.3)
+
+    x_labels = [
+        f"{ds} (D)" if ds in dummy_datasets else ds
+        for ds in datasets
+    ]
+    ax.set_xticks(np.arange(n_datasets) + bar_width * (n_methods - 1) / 2)
+    ax.set_xticklabels(x_labels, rotation=45, ha="right")
+    ax.set_ylabel("F1 Score")
+    ax.set_title("F1 Score Breakdown by Dataset and Method")
+    ax.yaxis.grid(True, alpha=0.3)
+    ax.set_axisbelow(True)
+    ax.legend(bbox_to_anchor=(1.02, 1), loc="upper left")
+
+    save_figure(fig, output_dir, "f1_breakdown")
+
+
+def plot_racs_scatter(
+    results: dict[str, dict[str, dict]],
+    output_dir: str | Path,
+) -> None:
+    """Scatter plot: effective_size on x-axis, RACS on y-axis, colored by method.
+
+    Each point represents one dataset for one method. Skips N/A entries.
+    """
+    methods = ALL_METHODS
+    markers = ["o", "s", "^", "D"]
+    colors = [plt.cm.tab10(i) for i in range(len(methods))]
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    for m_idx, method in enumerate(methods):
+        xs = []
+        ys = []
+        for ds in ALL_DATASETS:
+            entry = results.get(ds, {}).get(method, {})
+            eff_size = entry.get("effective_size", "N/A")
+            racs = entry.get("racs", "N/A")
+            if eff_size in ("N/A", None) or racs in ("N/A", None):
+                continue
+            try:
+                xs.append(float(eff_size))
+                ys.append(float(racs))
+            except (TypeError, ValueError):
+                continue
+
+        if xs:
+            ax.scatter(
+                xs, ys,
+                color=colors[m_idx],
+                marker=markers[m_idx],
+                s=60,
+                label=method,
+                alpha=0.8,
+            )
+
+    ax.set_xlabel("Effective Reservoir Size")
+    ax.set_ylabel("RACS")
+    ax.set_title("RACS vs Effective Size by Method")
+    ax.legend()
+
+    save_figure(fig, output_dir, "racs_scatter")
+
+
+def generate_all_artifacts(
+    datasets: list[str],
+    dataset_config: dict,
+    search_config: dict,
+    output_dir: str = "experiments/paper",
+) -> None:
+    """Orchestrate generation of all paper artifacts.
+
+    Runs table/stats generation, F1 breakdown, RACS scatter, convergence,
+    Pareto evolution, and ablation plots for each dataset.
+    """
+    print("Generating paper artifacts...")
+
+    # 1. Tables and significance tests
+    generate_tables_and_stats(datasets, dataset_config, output_dir)
+
+    # 2. Collect results for plots
+    results = collect_results(datasets)
+    dummy_datasets = {
+        ds for ds in datasets if is_dummy_data(ds, dataset_config)
+    }
+
+    # 3. F1 breakdown bar chart
+    plot_f1_breakdown(results, dummy_datasets, output_dir)
+    print(f"  F1 breakdown -> {output_dir}/f1_breakdown.png/.pdf")
+
+    # 4. RACS scatter plot
+    plot_racs_scatter(results, output_dir)
+    print(f"  RACS scatter -> {output_dir}/racs_scatter.png/.pdf")
+
+    # 5. Per-dataset plots
+    convergence_count = 0
+    pareto_count = 0
+    ablation_count = 0
+    for ds in datasets:
+        result = plot_convergence(ds, search_config, output_dir)
+        if result:
+            convergence_count += 1
+
+        result = plot_pareto_evolution(ds, search_config, output_dir)
+        if result:
+            pareto_count += 1
+
+        result = plot_ablation(ds, search_config, output_dir)
+        if result:
+            ablation_count += 1
+
+    total = 3 + convergence_count + pareto_count + ablation_count  # 3 tables
+    print(f"\nTotal artifacts generated: {total}")
+    print(f"  Tables: 3, F1 breakdown: 1, RACS scatter: 1")
+    print(f"  Convergence: {convergence_count}, Pareto: {pareto_count}, Ablation: {ablation_count}")
+
+
 _ABLATION_PARAMS = ["n_res", "rho", "sigma", "sparsity", "alpha", "k", "n_wash"]
 
 
