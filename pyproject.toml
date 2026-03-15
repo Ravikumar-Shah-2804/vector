@@ -26,3 +26,14 @@ vector = "vector.__main__:main"
 
 [tool.setuptools.packages.find]
 include = ["vector*"]
+
+[tool.coverage.run]
+omit = [
+    "vector/data/loaders/nab.py",
+    "vector/data/loaders/ucr.py",
+    "vector/data/loaders/mba.py",
+    "vector/data/loaders/smap.py",
+    "vector/data/loaders/smd.py",
+    "vector/data/loaders/swat.py",
+    "vector/data/loaders/wadi.py",
+]
