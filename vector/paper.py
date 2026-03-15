@@ -1,7 +1,8 @@
-"""Paper artifact generation: LaTeX tables and statistical significance tests.
+"""Paper artifact generation: LaTeX tables, statistical tests, and plots.
 
-Produces publication-ready LaTeX tables (Table 3: P/R/F1, Table 4: F1/Time/RACS)
-and Wilcoxon signed-rank statistical significance tests for VECTOR vs baselines.
+Produces publication-ready LaTeX tables (Table 3: P/R/F1, Table 4: F1/Time/RACS),
+Wilcoxon signed-rank statistical significance tests, convergence plots, Pareto
+front evolution plots, and ablation study plots for VECTOR vs baselines.
 All output written to experiments/paper/.
 """
 
@@ -376,3 +377,130 @@ def generate_tables_and_stats(
         note = entry.get("note", "")
         p_str = f"p={p:.4f}" if p is not None else note
         print(f"  {entry['baseline']}: {p_str} (n={entry['n_pairs']})")
+
+
+def plot_convergence(
+    dataset_name: str,
+    search_config: dict,
+    output_dir: str | Path,
+) -> str | None:
+    """Plot convergence curve: running-best F1 vs trial number.
+
+    Shows gray scatter dots for per-trial F1 (alpha=0.2) and a solid blue
+    line for the running best. Saves dual PNG+PDF via save_figure.
+
+    Returns the output path stem or None if the study cannot be loaded.
+    """
+    try:
+        import optuna
+
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+        from vector.search.engine import create_or_load_study
+
+        study = create_or_load_study(dataset_name, search_config)
+    except Exception as exc:
+        print(f"Warning: cannot load study for {dataset_name}: {exc}")
+        return None
+
+    completed = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
+    if not completed:
+        print(f"Warning: no completed trials for {dataset_name}")
+        return None
+
+    completed.sort(key=lambda t: t.number)
+    f1_values = np.array([1.0 - t.values[0] for t in completed])
+    trial_numbers = np.array([t.number for t in completed])
+    running_best = np.maximum.accumulate(f1_values)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.scatter(trial_numbers, f1_values, color="gray", alpha=0.2, s=8, label="Per-trial F1")
+    ax.plot(trial_numbers, running_best, color="blue", linewidth=2, label="Running best")
+    ax.set_xlabel("Trial Number")
+    ax.set_ylabel("F1 Score")
+    ax.set_title(f"Convergence - {dataset_name}")
+    ax.legend()
+
+    name = f"convergence_{dataset_name}"
+    save_figure(fig, output_dir, name)
+    return name
+
+
+def plot_pareto_evolution(
+    dataset_name: str,
+    search_config: dict,
+    output_dir: str | Path,
+    batches: list[int] | None = None,
+) -> str | None:
+    """Plot Pareto front evolution at different trial batch sizes.
+
+    Overlays non-dominated fronts at each batch checkpoint (default:
+    100, 500, 1000, 1500 trials). Uses viridis colormap for progression.
+    Saves dual PNG+PDF via save_figure.
+
+    Returns the output path stem or None if the study cannot be loaded.
+    """
+    if batches is None:
+        batches = [100, 500, 1000, 1500]
+
+    try:
+        import optuna
+
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+        from vector.search.engine import create_or_load_study
+
+        study = create_or_load_study(dataset_name, search_config)
+    except Exception as exc:
+        print(f"Warning: cannot load study for {dataset_name}: {exc}")
+        return None
+
+    completed = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
+    if not completed:
+        print(f"Warning: no completed trials for {dataset_name}")
+        return None
+
+    completed.sort(key=lambda t: t.number)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    colors = plt.cm.viridis(np.linspace(0.2, 0.9, len(batches)))
+
+    for batch_size, color in zip(batches, colors):
+        subset = [t for t in completed if t.number < batch_size]
+        if not subset:
+            continue
+
+        # Extract objectives: (effective_size, 1-F1) -- both minimized
+        points = np.array([[t.values[1], t.values[0]] for t in subset])
+
+        # Find non-dominated front via pairwise dominance
+        front_mask = np.ones(len(points), dtype=bool)
+        for i in range(len(points)):
+            if not front_mask[i]:
+                continue
+            for j in range(len(points)):
+                if i == j or not front_mask[j]:
+                    continue
+                # j dominates i if j <= i on both and strictly < on at least one
+                if (points[j, 0] <= points[i, 0] and points[j, 1] <= points[i, 1] and
+                        (points[j, 0] < points[i, 0] or points[j, 1] < points[i, 1])):
+                    front_mask[i] = False
+                    break
+
+        front = points[front_mask]
+        # Convert back to (effective_size, F1) for display
+        ax.scatter(
+            front[:, 0],
+            1.0 - front[:, 1],
+            color=color,
+            s=30,
+            label=f"After {batch_size} trials",
+            alpha=0.8,
+        )
+
+    ax.set_xlabel("Effective Reservoir Size (n_res / k)")
+    ax.set_ylabel("F1 Score")
+    ax.set_title(f"Pareto Front Evolution - {dataset_name}")
+    ax.legend()
+
+    name = f"pareto_evolution_{dataset_name}"
+    save_figure(fig, output_dir, name)
+    return name
