@@ -16,6 +16,48 @@ from vector.scoring.threshold import SPOTThreshold
 logger = logging.getLogger(__name__)
 
 
+def _aggregate_to_windows(
+    scores: np.ndarray, n_windows: int, window_size: int, washout: int,
+) -> np.ndarray:
+    """Aggregate per-timestep scores back to per-window scores.
+
+    The ESN produces ``n_windows * window_size - washout`` timestep scores.
+    This function maps each post-washout timestep back to its originating
+    window and returns the mean score per window.  Windows that fall
+    entirely within the washout transient receive a score of 0.
+
+    Parameters
+    ----------
+    scores : np.ndarray
+        Per-timestep scores of shape ``(n_windows * window_size - washout,)``.
+    n_windows : int
+        Number of input windows (N).
+    window_size : int
+        Timesteps per window (W).
+    washout : int
+        Number of initial timesteps discarded by the ESN.
+
+    Returns
+    -------
+    np.ndarray
+        Per-window scores of shape ``(n_windows,)``.
+    """
+    window_scores = np.zeros(n_windows)
+    window_counts = np.zeros(n_windows)
+
+    for i, score in enumerate(scores):
+        orig_t = i + washout  # original (pre-washout) timestep index
+        win_idx = orig_t // window_size
+        if win_idx < n_windows:
+            window_scores[win_idx] += score
+            window_counts[win_idx] += 1
+
+    # Average where we have counts; windows fully in washout keep score 0
+    mask = window_counts > 0
+    window_scores[mask] /= window_counts[mask]
+    return window_scores
+
+
 def sample_sequences(
     all_sequences: list[dict],
     n_sample: int,
@@ -143,12 +185,22 @@ def objective(
             val_states = esn.transform(seq["val"])
             test_states = esn.transform(seq["test"])
 
-            # Score with MD-RS
+            # Score with MD-RS (per-timestep)
             scorer = MDRSScorer(subsample_step=k)
             scorer.fit(train_states)
-            train_scores = scorer.score(train_states)
-            val_scores = scorer.score(val_states)
-            test_scores = scorer.score(test_states)
+            train_scores_ts = scorer.score(train_states)
+            val_scores_ts = scorer.score(val_states)
+            test_scores_ts = scorer.score(test_states)
+
+            # Aggregate per-timestep scores back to per-window scores
+            n_train = seq["train"].shape[0]
+            n_val = seq["val"].shape[0]
+            n_test = seq["test"].shape[0]
+            ws = seq["test"].shape[1]  # window_size
+
+            train_scores = _aggregate_to_windows(train_scores_ts, n_train, ws, n_wash)
+            val_scores = _aggregate_to_windows(val_scores_ts, n_val, ws, n_wash)
+            test_scores = _aggregate_to_windows(test_scores_ts, n_test, ws, n_wash)
 
             # Threshold with SPOT
             threshold = SPOTThreshold.from_config(dataset_name, config=dataset_config)
